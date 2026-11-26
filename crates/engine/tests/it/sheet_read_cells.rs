@@ -9,15 +9,19 @@ fn sheet_read_matches_cell_get_for_every_cell() {
     s.new_workbook();
     s.execute("range.setValues", json!({"range": "A1", "values": [["a", 1.25, null, 0.5], [null, 2, "b", null], [3, null, true, 7]]})).unwrap();
     s.execute("cell.set", json!({"cell": "B4", "input": "=B1*2"})).unwrap();
-    s.execute("cell.set", json!({"cell": "D4", "input": "=SEQUENCE(3)"})).unwrap();
+    s.execute("cell.set", json!({"cell": "D4", "input": "=SEQUENCE(3,2)"})).unwrap();
     s.execute("home.numberFormat", json!({"range": "B1:B2", "code": "0.0%"})).unwrap();
     s.execute("home.numberFormat", json!({"range": "3:3", "code": "0.000"})).unwrap();
+    // Spilled cells are not stored, so these whole-line formats reach them through the row and
+    // column styles.
+    s.execute("home.numberFormat", json!({"range": "5:5", "code": "0.000"})).unwrap();
     s.execute("home.numberFormat", json!({"range": "E:E", "code": "#,##0.00"})).unwrap();
     let range = "A1:F7";
     let plain = s.execute("sheet.read", json!({"range": range})).unwrap();
     let shown = s.execute("sheet.read", json!({"range": range, "formatted": true})).unwrap();
     let formulas = s.execute("sheet.read", json!({"range": range, "formulas": true})).unwrap();
     let mut spilled = 0;
+    let mut inherited = 0;
     for row in 0..7usize {
         for col in 0..6usize {
             let a1 = format!("{}{}", char::from(b'A' + col as u8), row + 1);
@@ -29,8 +33,12 @@ fn sheet_read_matches_cell_get_for_every_cell() {
                 _ => cell["value"].clone(),
             };
             assert_eq!(formulas["values"][row][col], expect, "{a1} formula");
-            spilled += usize::from(!cell["spilledFrom"].is_null());
+            if !cell["spilledFrom"].is_null() {
+                spilled += 1;
+                inherited += usize::from(cell["text"] != json!(cell["value"].to_string()));
+            }
         }
     }
     assert!(spilled > 0, "the read covers spilled cells");
+    assert!(inherited > 0, "some spilled cell shows a row or column format");
 }
