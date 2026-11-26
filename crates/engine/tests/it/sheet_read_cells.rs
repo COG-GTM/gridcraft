@@ -64,4 +64,5 @@ fn sheet_read_hides_protected_formulas_under_show_formulas() {
     assert!(open[0][0].as_str().is_some_and(|t| t.starts_with('=')), "unprotected, Show Formulas shows the formula");
     assert!(locked[0][0].as_str().is_some_and(|t| !t.starts_with('=')), "protection hides it");
     assert!(locked[0][1].as_str().is_some_and(|t| t.starts_with('=')), "an unhidden formula still shows");
+    assert!(locked[1][0].as_str().is_some_and(|t| !t.is_empty() && !t.starts_with('=')), "the hidden formula's spill still shows its value");
 }
