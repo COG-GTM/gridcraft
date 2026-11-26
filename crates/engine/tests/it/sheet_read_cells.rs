@@ -44,3 +44,24 @@ fn sheet_read_matches_cell_get_for_every_cell() {
     assert!(spilled > 0, "the read covers spilled cells");
     assert!(inherited > 0, "some spilled cell shows a row or column format");
 }
+
+#[test]
+fn sheet_read_hides_protected_formulas_under_show_formulas() {
+    let mut s = gridcraft_engine::Session::new();
+    s.new_workbook();
+    s.execute("cell.set", json!({"cell": "A1", "input": "=SEQUENCE(2)*7"})).unwrap();
+    s.execute("cell.set", json!({"cell": "B1", "input": "=1+1"})).unwrap();
+    s.execute("home.formatCells", json!({"range": "A1", "style": {"protection": {"locked": true, "hidden": true}}})).unwrap();
+    s.execute("formulas.showFormulas", json!({"on": true})).unwrap();
+    let read = |s: &mut gridcraft_engine::Session| s.execute("sheet.read", json!({"range": "A1:B2", "formatted": true})).unwrap()["values"].clone();
+    let open = read(&mut s);
+    s.execute("review.protectSheet", json!({})).unwrap();
+    let locked = read(&mut s);
+    for (row, col) in [(0, 0), (0, 1), (1, 0)] {
+        let a1 = format!("{}{}", char::from(b'A' + col as u8), row + 1);
+        assert_eq!(locked[row][col], s.execute("cell.get", json!({"cell": a1})).unwrap()["text"], "{a1}");
+    }
+    assert!(open[0][0].as_str().is_some_and(|t| t.starts_with('=')), "unprotected, Show Formulas shows the formula");
+    assert!(locked[0][0].as_str().is_some_and(|t| !t.starts_with('=')), "protection hides it");
+    assert!(locked[0][1].as_str().is_some_and(|t| t.starts_with('=')), "an unhidden formula still shows");
+}
