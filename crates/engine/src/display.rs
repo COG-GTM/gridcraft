@@ -128,6 +128,9 @@ pub fn cell_text(wb: &Workbook, sheet: &Sheet, c: CellRef) -> String {
     shown_text(wb, sheet, c)
 }
 
+/// How many parsed formats [`cell_text_in`] keeps for one read.
+const READ_FORMATS: usize = 64;
+
 /// [`cell_text`] for one of many cells read from `sheet` in a row: `cell` is the stored cell at
 /// `c` (`sheet.cell(c)`), and `formats` keeps each style's parsed number format between calls.
 pub(crate) fn cell_text_in(wb: &Workbook, sheet: &Sheet, c: CellRef, cell: Option<&Cell>, formats: &mut HashMap<StyleId, NumberFormat>) -> String {
@@ -138,8 +141,17 @@ pub(crate) fn cell_text_in(wb: &Workbook, sheet: &Sheet, c: CellRef, cell: Optio
         return format!("={}", f.text);
     }
     let style = cell.map_or_else(|| sheet.style_id(c), |x| x.style);
-    let fmt = formats.entry(style).or_insert_with(|| parsed(wb.styles.get(style).num_fmt.as_str()));
-    with_fill_space(format_value(stored_value(sheet, c, cell), fmt, wb.date_system))
+    let v = stored_value(sheet, c, cell);
+    if let Some(fmt) = formats.get(&style) {
+        return with_fill_space(format_value(v, fmt, wb.date_system));
+    }
+    let fmt = parsed(wb.styles.get(style).num_fmt.as_str());
+    let text = with_fill_space(format_value(v, &fmt, wb.date_system));
+    // Bounded, so a range of many distinct formats holds no more of them than `parsed` does.
+    if formats.len() < READ_FORMATS {
+        formats.insert(style, fmt);
+    }
+    text
 }
 
 /// [`Sheet::value`] of `c` given its stored cell, without looking the cell up again.
