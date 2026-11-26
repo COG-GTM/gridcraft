@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use gridcraft_core::{CellRef, RangeRef, Value};
-use gridcraft_model::{Sheet, Workbook};
+use gridcraft_model::{Cell, Sheet, StyleId, Workbook};
 use gridcraft_numfmt::{Formatted, NumberFormat, format_value, format_value_full};
 
 /// Parsed number formats are cached by code.
@@ -126,6 +126,29 @@ pub fn cell_text(wb: &Workbook, sheet: &Sheet, c: CellRef) -> String {
         return format!("={}", f.text);
     }
     shown_text(wb, sheet, c)
+}
+
+/// [`cell_text`] for one of many cells read from `sheet` in a row: `cell` is the stored cell at
+/// `c` (`sheet.cell(c)`), and `formats` keeps each style's parsed number format between calls.
+pub(crate) fn cell_text_in(wb: &Workbook, sheet: &Sheet, c: CellRef, cell: Option<&Cell>, formats: &mut HashMap<StyleId, NumberFormat>) -> String {
+    if sheet.show_formulas
+        && let Some(f) = cell.and_then(|x| x.formula.as_ref())
+        && !formula_hidden(wb, sheet, c)
+    {
+        return format!("={}", f.text);
+    }
+    let style = cell.map_or_else(|| sheet.style_id(c), |x| x.style);
+    let fmt = formats.entry(style).or_insert_with(|| parsed(wb.styles.get(style).num_fmt.as_str()));
+    with_fill_space(format_value(stored_value(sheet, c, cell), fmt, wb.date_system))
+}
+
+/// [`Sheet::value`] of `c` given its stored cell, without looking the cell up again.
+pub(crate) fn stored_value<'a>(sheet: &'a Sheet, c: CellRef, cell: Option<&'a Cell>) -> &'a Value {
+    static EMPTY: Value = Value::Empty;
+    match cell {
+        Some(x) if !x.value.is_empty() || x.formula.is_some() => &x.value,
+        _ => sheet.spill.get(&c).unwrap_or(&EMPTY),
+    }
 }
 
 /// A cell's value with its number format applied, independent of column width: no `#####`

@@ -98,16 +98,19 @@ fn read(s: &mut Session, p: &Json) -> Result<Json> {
     let formulas = bool_param(p, "formulas").unwrap_or(false);
     let formatted = bool_param(p, "formatted").unwrap_or(false);
     let mut rows = Vec::with_capacity(r.height() as usize);
+    let mut formats = std::collections::HashMap::new();
     for row in r.start.row..=r.end.row {
         let mut cols = Vec::with_capacity(r.width() as usize);
+        let mut stored = sh.cells.row(row, r.start.col, r.end.col).peekable();
         for col in r.start.col..=r.end.col {
             let c = CellRef::new(row, col);
-            let v = if formulas && let Some(f) = sh.cell(c).and_then(|x| x.formula.as_ref()) {
+            let cell = stored.next_if(|(at, _)| *at == col).map(|(_, x)| x);
+            let v = if formulas && let Some(f) = cell.and_then(|x| x.formula.as_ref()) {
                 json!(format!("={}", f.text))
             } else if formatted {
-                json!(crate::display::cell_text(&d.wb, sh, c))
+                json!(crate::display::cell_text_in(&d.wb, sh, c, cell, &mut formats))
             } else {
-                value_json(&sh.value(c))
+                value_json(crate::display::stored_value(sh, c, cell))
             };
             cols.push(v);
         }
