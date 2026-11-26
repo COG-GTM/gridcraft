@@ -35,7 +35,9 @@ fn sheet_read_matches_cell_get_for_every_cell() {
             assert_eq!(formulas["values"][row][col], expect, "{a1} formula");
             if !cell["spilledFrom"].is_null() {
                 spilled += 1;
-                inherited += usize::from(cell["text"] != json!(cell["value"].to_string()));
+                // The spill holds whole numbers, which General shows without a decimal point.
+                let decimals = cell["text"].as_str().is_some_and(|t| t.contains('.'));
+                inherited += usize::from(decimals && cell["value"].as_f64().is_some_and(|v| v.fract() == 0.0));
             }
         }
     }
